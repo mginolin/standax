@@ -2,7 +2,7 @@ import jax
 import optax
 
 def fit_adam(func, init_params,
-             learning_rate=5e-3, niter=200, 
+             learning_rate=2e-3, niter=1500, 
              tol=1e-3,
              **kwargs):
     """ simple Adam gradient descent using optax.adam
