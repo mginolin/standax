@@ -119,7 +119,7 @@ class Standardize( object ):
         return data_
     
     def fit(self, init=None, sigmaint=0.1, nfetch=1,
-            fit_method="adam", num_samples=500,
+            fit_method="tncg", num_samples=500,
             verbose=False,
             **kwargs):
         """ fit the data
