@@ -1,3 +1,4 @@
+import jax
 import optax
 
 def fit_adam(func, init_params,
@@ -13,7 +14,7 @@ def fit_adam(func, init_params,
 
     learning_rate: float
         learning rate of the gradient descent.
-        (careful, results can be sensitive to this parameter)
+        (careful, results can be sensitive to this parameter)p
         
     init_param: 
         entry parameter of the input func

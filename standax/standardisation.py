@@ -119,7 +119,7 @@ class Standardize( object ):
         return data_
     
     def fit(self, init=None, sigmaint=0.1, nfetch=1,
-            fit_method="tncg", num_samples=500,
+            fit_method="adam", num_samples=500,
             verbose=False,
             **kwargs):
         """ fit the data
@@ -145,7 +145,7 @@ class Standardize( object ):
 
         fit_method: func, str
             function used to minimize. 
-            If string given it is assumed to be edris.fitter.fit_{fit_method}
+            If string given it is assumed to be .fitter.fit_{fit_method}
 
         **kwargs fit_method options (e.g., niter, tol etc)
 
@@ -156,7 +156,7 @@ class Standardize( object ):
             - loss: array, loss history
 
         """
-        from edris import fitter
+        from . import fitter
 
         # --------- #
         #   guess   #
@@ -429,7 +429,7 @@ class StandardizationModel( object ):
         sigmaint
             float
         """
-        from edris.fitter import fit_adam        
+        from .fitter import fit_adam        
         def _to_minimize_(sigmaint):
             # get_chi2(self, params, sigmaint=0):
             chi2 = self.get_chi2(params, sigmaint=sigmaint)
