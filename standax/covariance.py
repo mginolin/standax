@@ -8,17 +8,18 @@ import warnings
 #   Internal     #
 #                #
 # ============== #
-def compute_fastcov_chi2(q, lambda_, inv_cxx, cov_yx, delta_y, delta_x, sigmaint):
+
+def compute_cov_chi2(delta_y, flat_delta_x, cov_xx, cov_yy, cov_yx, sigmaint):
     """ fast chi2 and logdet computation from reshaped covariance matrix elements.
-    
+
     Parameters
     ----------
-    
+
     delta_y: jnp.array 
         residual between observed_y - model_y (N,)
 
-    delta_x: jnp.array 
-        residual between observed_x - model_x (M, N)
+    flat_delta_x: jnp.array 
+        residual between observed_x - model_x (M*N)
 
     sigmaint: jnp.array
         intrinsic dispersion () or (N,)
@@ -28,18 +29,17 @@ def compute_fastcov_chi2(q, lambda_, inv_cxx, cov_yx, delta_y, delta_x, sigmaint
     -------
     chi2, logdet
     """
-    qr = q.T @ delta_y
-    inv_sdiag = 1/(lambda_ + sigmaint**2)
-    inv_c2r = inv_cxx @ delta_x
-    c1_inv_c2r = cov_yx @ inv_c2r
-    s_c1_inv_c2r = (delta_y.T * c1_inv_c2r) * inv_sdiag
-    rwr = ( (qr ** 2 * inv_sdiag).sum()
-            - 2 * s_c1_inv_c2r.sum()
-            + (delta_x * inv_c2r).sum()
-            + (c1_inv_c2r **2 * inv_sdiag).sum()
-          )
-    
-    return rwr, -jnp.log(inv_sdiag).sum()
+
+    C = jnp.block([
+    [cov_yy + jnp.identity(len(delta_y))*sigmaint**2,               cov_yx],
+
+    [cov_yx.T, cov_xx               ]])
+
+    invC = jnp.linalg.inv(C)
+    delta = jnp.concatenate([delta_y, flat_delta_x])
+    sign, logdet = jnp.linalg.slogdet(invC)
+
+    return jnp.matmul(delta.T,jnp.matmul(invC,delta)), -sign*logdet
 
 def nodiag_elements( matrix2d ):
     """ """
@@ -252,7 +252,7 @@ def dataframe_to_covmatrices(data, ykey="mag", xkeys=["x1","c"],
 
 class CovMatrix( object ):
     
-    def __init__(self, cov_yy=None, cov_yx=None, cov_xx=None, precompute=True):
+    def __init__(self, cov_yy=None, cov_yx=None, cov_xx=None):
         """ Covariance Matrix per block
         
         • ---- • ----- •
@@ -272,18 +272,14 @@ class CovMatrix( object ):
         cov_xx: array
             covariance matrix between x-parameters (M*N, M*N)
             
-        precompute: bool
-            should this run _precompute ?
             
         """
         self.cov_yy = cov_yy
         self.cov_yx = cov_yx
         self.cov_xx = cov_xx
-        if precompute and not self.is_diag:
-            self._precompute() # do not compute on diag param
 
     @classmethod
-    def from_data(cls, data, precompute=True,
+    def from_data(cls, data,
                       ykey="mag", xkeys=["x1","c"],
                       **kwargs):
         """ loads the covariance matrix based on dataframe
@@ -294,9 +290,6 @@ class CovMatrix( object ):
             dataframe with the following format:
             - {keyi}_err
             - cov_{keyi}_{keyj} | cov_{keyj}_{keyi}: the first found is used.
-
-        precompute: bool
-            should this run _precompute ?
 
         ykey: string
             name of the y-columns
@@ -313,32 +306,8 @@ class CovMatrix( object ):
         cov_yy, cov_yx, cov_xx = dataframe_to_covmatrices(data,
                                                           ykey=ykey, xkeys=xkeys,
                                                           **kwargs)
-        return cls(cov_yy=cov_yy, cov_yx=cov_yx, cov_xx=cov_xx,
-                 precompute=precompute)
-        
-    def _precompute(self):
-        """ Precompute a few matrices to speed up __call__ """
-        if "Metal" not in str(jax.devices()): # not ready
-            self._inv_cxx = jnp.linalg.inv(self.cov_xx)
-            jax_ok = True
-            _jnp = jnp
-        else: # numpy back-up
-            self._inv_cxx = np.linalg.inv( self.cov_xx.astype("float32") )
-            jax_ok = False
-            _jnp = np
-
-        self._inv_cxx_cyx = self._inv_cxx @ self.cov_yx.T
-        self._lambda, self._q = _jnp.linalg.eig(self.cov_yy - _jnp.dot(self.cov_yx, self._inv_cxx_cyx))
-
-        if not jax_ok: # jax.array what is needed.
-            self._inv_cxx = jnp.asarray(self._inv_cxx, dtype="float32")
-            self._lambda = jnp.asarray(self._lambda, dtype="float32")
-            self._q = jnp.asarray(self._q, dtype="float32")
-        else: # make sure it is float
-            self._lambda = self._lambda.astype(float)
-            self._q = self._q.astype(float)
-
-        
+        return cls(cov_yy=cov_yy, cov_yx=cov_yx, cov_xx=cov_xx)
+ 
     # =============== #
     #    Methods      #
     # =============== #
@@ -392,13 +361,19 @@ class CovMatrix( object ):
         else:
             # F as x1_vec, x2_vec because (x1_0, x2_0, x1_1, x1_1 etc.)
             flat_delta_x = delta_x.ravel("F")
-            chi2, logdet = compute_fastcov_chi2(q=self._q,
-                                                lambda_=self._lambda,
-                                                inv_cxx=self._inv_cxx, 
-                                                cov_yx=self.cov_yx,
-                                                delta_y=delta_y, #(N,)
-                                                delta_x=flat_delta_x, #(N*M,)
-                                                sigmaint=sigmaint)
+            chi2, logdet = compute_cov_chi2(delta_y=delta_y, 
+                                            flat_delta_x=flat_delta_x, 
+                                            cov_xx=self.cov_xx, 
+                                            cov_yy=self.cov_yy, 
+                                            cov_yx=self.cov_yx, 
+                                            sigmaint=sigmaint)
+            #chi2, logdet = compute_fastcov_chi2(q=self._q,
+            #                                    lambda_=self._lambda,
+            #                                    inv_cxx=self._inv_cxx, 
+            #                                    cov_yx=self.cov_yx,
+            #                                    delta_y=delta_y, #(N,)
+            #                                    delta_x=flat_delta_x, #(N*M,)
+            #                                    sigmaint=sigmaint)
         return chi2, logdet
 
     def get_restriction(self, coefs, sigmaint=0):
@@ -455,7 +430,7 @@ class CovMatrix( object ):
             # check if diagonal as lazy property
             is_x_diag = is_matrix_diagonal(self.cov_xx)
             is_y_diag = is_matrix_diagonal(self.cov_yy)
-            is_xy_null = bool( (self.cov_yx == 0).all() )
+            is_xy_null = bool( (np.array(self.cov_yx) == 0).all() )
             self._is_diag = is_x_diag & is_y_diag & is_xy_null
             
         return self._is_diag
