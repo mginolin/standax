@@ -10,7 +10,7 @@ import warnings
 # ============== #
 
 def compute_cov_chi2(delta_y, flat_delta_x, cov_xx, cov_yy, cov_yx, sigmaint):
-    """ fast chi2 and logdet computation from reshaped covariance matrix elements.
+    """ chi2 and logdet computation.
 
     Parameters
     ----------
