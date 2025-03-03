@@ -7,7 +7,7 @@ To install the package, just do:
     cd standax
     pip install .
 
-This is the code that was used to fit for standardisation in the ZTF DR2 analysis (Rigault+25a, Ginolin+25a,b). The concept of the code, which relies on a 'total $\chi^2$' minimisation is explained in Section of Ginolin+25b and Khun+ (in prep). If you use the code please cite those two papers.
+This is a simplified version of the code that was used to fit for standardisation in the ZTF DR2 analysis (Rigault+25a, Ginolin+25a,b). The full code uses optimisation methods that will be realeased with Khun+ (in prep), which do not change the outcome of the code but make it faster. The concept of 'total $\chi^2$' minimisation on which `standax` is based, is explained in Section 4.2 of Ginolin+25b and Khun+ (in prep). If you use the code please cite those two papers.
 
 There are a few examples notebooks in `/notebooks/` :
 - `total_chi2.ipynb` and `totalchi2_and_standardisation.ipynb` showcase the principal of the total $\chi^2$ fit for line-fitting and applied to a simple simulated SN standardisation problem.
