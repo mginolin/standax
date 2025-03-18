@@ -555,7 +555,10 @@ class HubbleResiduals:
                 self.set_chi2(get_chi2_cov_tot_step(self.stepmask, self.res, self.data['x1'], self.data['c'], self.cov, self.beta, self.alpha, self.const, self.step, self.sn_scatter)/(len(self.res)-5))
             else:
                 print("Smooth step not implemented yet with loglikelihood")
+                return
         elif self.fit_method == 'standax':
+            print("The fixed-standardisation step fit is not implemented yet with standax")
+            return
             if self.smooth_step == True:
                 step = self.stepcdf-0.5
             else:
