@@ -527,48 +527,76 @@ class HubbleResiduals:
             self.set_loglikelihood(this_l.model.get_likelihood(fid, sigmaint=self.sn_scatter)*0.5)
         self.correction()
        
-    def fit_step_fixed(self, beta, beta_err, alpha, alpha_err, cov_alpha_beta=0, guess_sigma=0.16, force_sigmaint=False):  ##fixed beta,alpha for comparison between masks
+    def fit_step_fixed(self, beta, beta_err, alpha, alpha_err, cov_alpha_beta=0, guess_sigma=0.16, force_sigmaint=False, smooth_step=True):  ##fixed beta,alpha for comparison between masks
         """
         Fits for a step correction of the residuals for fixed (alpha, beta) parameters
         """
+        if smooth_step is not None:
+            self.set_smooth_step(smooth_step) 
+        else:
+            self.set_smooth_step(False)
         self.set_broken_alpha(False)
         if self.fit_method == 'loglikelihood':
-            m_res = Minuit(get_loglikelihood_step(self.stepmask, self.res, self.data['mag_err'], 
-                        self.data['x1'],self.data['c'], beta, alpha), const=-0.1, step=0.1, sig=guess_sigma)
-            m_res.errordef = Minuit.LIKELIHOOD
-            m_res.migrad()
-            self.set_beta(beta)
-            self.set_beta_err(beta_err)
-            self.set_alpha(alpha)
-            self.set_alpha_err(alpha_err)
-            self.set_const(m_res.values[0])
-            self.set_const_err(m_res.errors[0])
-            self.set_step(m_res.values[1])
-            self.set_step_err(m_res.errors[1])
-            self.set_sn_scatter(m_res.values[2])
-            self.set_minuit(m_res)
-            self.set_chi2(get_chi2_cov_tot_step(self.stepmask, self.res, self.data['x1'], self.data['c'], self.cov, self.beta, self.alpha, self.const, self.step, self.sn_scatter)/(len(self.res)-5))
+            if self.smooth_step == False:
+                m_res = Minuit(get_loglikelihood_step(self.stepmask, self.res, self.data['mag_err'], 
+                            self.data['x1'],self.data['c'], beta, alpha), const=-0.1, step=0.1, sig=guess_sigma)
+                m_res.errordef = Minuit.LIKELIHOOD
+                m_res.migrad()
+                self.set_beta(beta)
+                self.set_beta_err(beta_err)
+                self.set_alpha(alpha)
+                self.set_alpha_err(alpha_err)
+                self.set_const(m_res.values[0])
+                self.set_const_err(m_res.errors[0])
+                self.set_step(m_res.values[1])
+                self.set_step_err(m_res.errors[1])
+                self.set_sn_scatter(m_res.values[2])
+                self.set_minuit(m_res)
+                self.set_chi2(get_chi2_cov_tot_step(self.stepmask, self.res, self.data['x1'], self.data['c'], self.cov, self.beta, self.alpha, self.const, self.step, self.sn_scatter)/(len(self.res)-5))
+            else:
+                print("Smooth step not implemented yet with loglikelihood")
         elif self.fit_method == 'standax':
-            step = self.stepmask*1-0.5
+            if self.smooth_step == True:
+                step = self.stepcdf-0.5
+            else:
+                step = self.stepmask*1-0.5
             step_err = np.ones(len(step))*1e-4*1.
-            fit_data_step = pandas.DataFrame({'mag':self.res, 'mag_err':self.data['mag_err'], 'step':step, 'step_err':step_err, 'cov_step_mag':np.zeros(len(step))*1.})
-            fid, add = goodz_step = standardisation.standardize_snia(fit_data_step, init_coefs=[0.13], xkeys=['step'], #lmbda=10000, 
+            fit_data_step = pandas.DataFrame({'mag':self.res, 'mag_err':self.data['mag_err'], 'step':step, 'step_err':step_err, 'cov_step_mag':np.zeros(len(step))*1.})          
+            (fid, sigmaint, mcmc_l), this_l = standardisation.standardise_snia(fit_data_step, init_coefs=[0.13], xkeys=['step'], #lmbda=10000, 
                                                                      sigmaint=guess_sigma, force_sigmaint=force_sigmaint)
-            sself.set_beta(beta)
-            self.set_beta_err(beta_err)
+            self.set_beta(beta)
             self.set_alpha(alpha)
-            self.set_alpha_err(alpha_err)
             self.set_step(fid['coefs'][0])
-            self.set_step_err(fid['coefs_err'][0])
             self.set_const(fid['offset'])
-            self.set_const_err(fid['coefs_err'][1])
-            self.set_sn_scatter(fid['sigmaint'])
-            cov_params = add[1][:2,:2]
+            chain_step = mcmc_l.get_samples()['coefs'][:,0]
+            chain_offset = mcmc_l.get_samples()['offset'][:]
+            len_chain = len(chain_step)
+            cov_params[0,0] = beta_err**2
+            cov_params[1,1] = alpha_err**2
+            cov_params[2,2] = np.sum((chain_offset-self.const)**2)/len_chain
+            cov_params[3,3] = np.sum((chain_step-self.step)**2)/len_chain
+            cov_params[0,1] = 0
+            cov_params[1,0] = cov_params[0,1]
+            cov_params[0,2] = 0
+            cov_params[2,0] = cov_params[0,2]
+            cov_params[0,3] = 0
+            cov_params[3,0] = cov_params[0,3]
+            cov_params[1,2] = 0
+            cov_params[2,1] = cov_params[1,2]
+            cov_params[1,3] = 0
+            cov_params[3,1] = cov_params[1,3]
+            cov_params[2,3] = np.sum((chain_offset-self.const)*(chain_step-self.step))/len_chain
+            cov_params[3,2] = cov_params[2,3]
+            self.set_cov_params(cov_params)
+            self.set_beta_err(np.sqrt(cov_params[0,0]))
+            self.set_alpha_err(np.sqrt(cov_params[1,1]))
+            self.set_const_err(np.sqrt(cov_params[2,2]))
+            self.set_step_err(np.sqrt(cov_params[3,3]))
+            self.set_sn_scatter(fid['sigmaint'][-1])
+            cov_params = np.zeros((2,2))
             cov_params[:, [0, 1]] = cov_params[:, [1, 0]] #swapping columns to put them in the same order as the minuit routine
             cov_params[[0, 1], :] = cov_params[[1, 0], :]
             self.set_cov_params(cov_params)
-        else:
-            print("The fixed method is not yet implemented for the standax standardisation")
         self.correction(cov_alpha_beta)
         
     
