@@ -71,7 +71,7 @@ def fit_tncg(func, init_param,
     def step_tncg(x, optstate):
         loss, grads = fg(x)
         lmbda = optstate['lmbda']
-        fvp = lambda v: jax.tree_map(lambda d1, d2: d1 + lmbda*d2, hessian_vector_product(jax.grad(func_), x, v), v)
+        fvp = lambda v: jax.tree_util.tree_map(lambda d1, d2: d1 + lmbda*d2, hessian_vector_product(jax.grad(func_), x, v), v)
         updates, _ = jax.scipy.sparse.linalg.cg(fvp, grads, maxiter=50)
         coco = jax.tree_util.tree_reduce(lambda x, y: x+y, jax.tree_util.tree_map(lambda x, y: (-x*y).sum(), grads, updates))
         return updates, loss, optstate, coco
